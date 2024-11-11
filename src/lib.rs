@@ -1,19 +1,17 @@
 #![feature(proc_macro_hygiene)]
 
-
-use smash::app::{self, lua_bind::*};
+use smash::app::lua_bind;
 use rand::Rng;
 pub mod ext;
-use ext::Controller;
+mod singletons;
 
-static mut SHOULD_END_RESULT_SCREEN : bool = false;
-pub static mut FIGHTER_MANAGER_ADDR: usize = 0;
+static mut SHOULD_END_RESULT_SCREEN: bool = false;
 
-#[skyline::hook(offset = 0x3664CC0)]
-unsafe fn process_inputs_handheld(controller: &mut Controller) {
-    let mgr = *(FIGHTER_MANAGER_ADDR as *mut *mut app::FighterManager);
-    let entry_count = FighterManager::entry_count(mgr);
-    if FighterManager::is_result_mode(mgr) && entry_count > 0 {
+// Skip results screen with start button
+#[skyline::hook(offset = 0x3664CE0)]
+unsafe fn process_inputs_handheld(controller: &mut ext::Controller) {
+    let entry_count = lua_bind::FighterManager::entry_count(singletons::FighterManager());
+    if lua_bind::FighterManager::is_result_mode(singletons::FighterManager()) && entry_count > 0 {
         if ninput::any::is_press(ninput::Buttons::PLUS) {
             SHOULD_END_RESULT_SCREEN = true;
         }
@@ -36,14 +34,9 @@ unsafe fn process_inputs_handheld(controller: &mut Controller) {
     call_original!(controller);
 }
 
-#[skyline::main(name = "results-screen")]
+#[skyline::main(name = "results-screen-skip")]
 pub fn main() {
-    unsafe {
-        skyline::nn::ro::LookupSymbol(
-            &mut FIGHTER_MANAGER_ADDR,
-            "_ZN3lib9SingletonIN3app14FighterManagerEE9instance_E\u{0}".as_bytes().as_ptr(),
-        );
-    }
+    singletons::init();
     skyline::install_hooks!(
         process_inputs_handheld
     );
